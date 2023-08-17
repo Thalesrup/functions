@@ -1,5 +1,5 @@
 <?php
-function arrayObjDebug($variable, $html = false, $maxDepth = 100, $maxWidth = 25, $depth = 0, &$objects = array())
+function arrayObjDebug($variable, $html = false, $maxDepth = 100, $maxWidth = 25, $depth = 0, &$objects = [])
 {
     $type = gettype($variable);
     
@@ -42,8 +42,8 @@ function arrayObjDebug($variable, $html = false, $maxDepth = 100, $maxWidth = 25
 function formatString($string, $maxLength)
 {
     $string = str_replace(
-        array("\0", "\a", "\b", "\f", "\n", "\r", "\t", "\v"),
-        array('\0', '\a', '\b', '\f', '\n', '\r', '\t', '\v'),
+        ["\0", "\a", "\b", "\f", "\n", "\r", "\t", "\v"],
+        ['\0', '\a', '\b', '\f', '\n', '\r', '\t', '\v'],
         substr($string, 0, $maxLength),
         $count
     );
@@ -110,4 +110,3 @@ $dellRey = [
 ];
 
 echo arrayObjDebug($dellRey, true);
-
