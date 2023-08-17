@@ -1,126 +1,113 @@
 <?php
-function array_obj_debug($variavel,$html=false,$maximo=100,$largura=25,$elemento=0,&$objetos = array())
+function arrayObjDebug($variable, $html = false, $maxDepth = 100, $maxWidth = 25, $depth = 0, &$objects = array())
 {
-    $busca        = array("\0", "\a", "\b", "\f", "\n", "\r", "\t", "\v");
-    $substituir   = array('\0', '\a', '\b', '\f', '\n', '\r', '\t', '\v');
-    $tipoEntrada  = gettype($variavel);
+    $type = gettype($variable);
     
-    $string = '';
-    if ($tipoEntrada == 'boolean'):
-    $string.= $variavel?'true':'false';
-    elseif ($tipoEntrada == 'integer'):
-    $string.= $variavel;
-    elseif ($tipoEntrada == 'double'):
-    $string.= $variavel; 
-    elseif ($tipoEntrada == 'double'):
-    $string.= $variavel;
-    elseif ($tipoEntrada == 'resource'):
-    $string.= '[resource]';
-    elseif ($tipoEntrada == 'NULL'):
-    $string.= "null";
-    elseif ($tipoEntrada == 'unknown type'):
-    $string.= 'undefined';
+    $output = '';
+    if ($type == 'boolean'):
+        $output .= $variable ? 'true' : 'false';
+    elseif ($type == 'integer' || $type == 'double'):
+        $output .= $variable;
+    elseif ($type == 'NULL'):
+        $output .= 'null';
+    elseif ($type == 'string'):
+        $output .= formatString($variable, $maxDepth);
+    elseif ($type == 'array'):
+        $output .= formatArray($variable, $html, $maxDepth, $maxWidth, $depth, $objects);
+    elseif ($type == 'object'):
+        $output .= formatObject($variable, $html, $maxDepth, $maxWidth, $depth, $objects);
+    else:
+        $output .= 'undefined';
+    endif;
     
-    elseif ($tipoEntrada == 'string'):
-    $tamanho  = strlen($variavel);
-    $variavel = str_replace($busca,$substituir,substr($variavel,0,$maximo),$count);
-    $variavel = substr($variavel,0,$maximo);
-    if ($tamanho<$maximo){
-        $string.= '"'.$variavel.'"';
-    } else {
-        $string.= 'Tamanho String('.$tamanho.'): "'.$variavel.'"';
+    if ($depth == 0) {
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        do {
+            $call = array_shift($backtrace);
+        } while ($call && !isset($call['file']));
+
+        if ($call) {
+            $output = "Arquivo que chamou: " . $call['file'] . "\n" . "Linha que chamou a Function : " . $call['line'] . "\n" . $output . ';';
+            if ($html) {
+                echo nl2br(str_replace(' ', '&nbsp;', htmlentities($output)));
+            } else {
+                echo $output;
+            }
+        }
     }
     
-    elseif ($tipoEntrada == 'array'):            
-    $tamanho = count($variavel);
+    return $output;
+}
+
+function formatString($string, $maxLength)
+{
+    $string = str_replace(
+        array("\0", "\a", "\b", "\f", "\n", "\r", "\t", "\v"),
+        array('\0', '\a', '\b', '\f', '\n', '\r', '\t', '\v'),
+        substr($string, 0, $maxLength),
+        $count
+    );
+    $string = substr($string, 0, $maxLength);
+    $length = strlen($string);
+    
+    if ($length < $maxLength) {
+        return '"' . $string . '"';
+    } else {
+        return 'Tamanho String(' . $length . '): "' . $string . '"';
+    }
+}
+
+function formatArray($array, $html, $maxDepth, $maxWidth, $depth, &$objects)
+{
+    $length = count($array);
    
-    if(!$tamanho):
-        $string.= 'array(0) {}';
-    
-    else:
-        $keys        = array_keys($variavel);
-        $espacamento = str_repeat(' ',$elemento*2);
-        $string.= $espacamento.'[';
-        $count  = 0;
-        foreach($keys as $key):
-            if ($count == $largura):
-                $string.= "\n".$espacamento;
+    if (!$length) {
+        return 'array(0) {}';
+    } else {
+        $keys = array_keys($array);
+        $indentation = str_repeat(' ', $depth * 2);
+        $output = $indentation . '[';
+        $count = 0;
+        foreach ($keys as $key) {
+            if ($count == $maxWidth) {
+                $output .= "\n" . $indentation;
                 break;
-            endif;
-            $string.= "\n".$espacamento."  $key => ";
-            $string.= array_obj_debug($variavel[$key],$html,$maximo,$largura,$elemento+1,$objetos).',';
+            }
+            $output .= "\n" . $indentation . "  $key => " . arrayObjDebug($array[$key], $html, $maxDepth, $maxWidth, $depth + 1, $objects) . ',';
             $count++;
-        endforeach;
-        $string.="\n".$espacamento.']';
-    endif;
-    
-    elseif ($tipoEntrada == 'object'):         
-    $id = array_search($variavel,$objetos,true);
-    if ($id !== false):
-        $string.= get_class($variavel).'#'.($id+1).' {...}';
-    
-    else:
-        $array       = (array)$variavel;
-        $espacamento = str_repeat(' ',$elemento*2);
-        $string.= '[';
-        $properties = array_keys($array);
-        foreach($properties as $property) {
-            $name = str_replace("\0",':',trim($property));
-            $string.= "\n".$espacamento."  '$name' => ";
-            $string.= array_obj_debug($array[$property],$html,$maximo,$largura,$elemento+1,$objetos).',';
         }
-        $string.= "\n".$espacamento.']';
-    endif;
+        $output .= "\n" . $indentation . ']';
+        return $output;
+    }
+}
+
+function formatObject($object, $html, $maxDepth, $maxWidth, $depth, &$objects)
+{
+    $id = array_search($object, $objects, true);
     
-    endif;
-    
-    if ($elemento>0):
-    return $string;
-    endif;
-    
-    $backtrace  = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-    do $chamada = array_shift($backtrace);
-    while ($chamada && !isset($chamada['file']));
-    
-    if ($chamada):
-        $string = "Arquivo que chamou: ".$chamada['file']."\n"."Linha que chamou a Function : ".$chamada['line']."\n".$string.';';
-        if($html === true):
-            echo nl2br(str_replace(' ','&nbsp;',htmlentities($string)));
-        else:
-            echo $string;
-        endif;
-    endif;
+    if ($id !== false) {
+        return get_class($object) . '#' . ($id + 1) . ' {...}';
+    } else {
+        $array = (array)$object;
+        $indentation = str_repeat(' ', $depth * 2);
+        $output = $indentation . '[';
+        $properties = array_keys($array);
+        foreach ($properties as $property) {
+            $name = str_replace("\0", ':', trim($property));
+            $output .= "\n" . $indentation . "  '$name' => " . arrayObjDebug($array[$property], $html, $maxDepth, $maxWidth, $depth + 1, $objects) . ',';
+        }
+        $output .= "\n" . $indentation . ']';
+        return $output;
+    }
 }
 
 $dellRey = [
-  0 => 
-    [
-      'regra_quebrada' =>  'vlAtualBeneficio',
-      'nome_tag' =>  'beneficioServidor' ,
-      'id_vinculado' =>  '28'],
-  1 => 
-    [
-      'regra_quebrada' =>  'dtUltimaAtualizacao',
-      'nome_tag' =>  'beneficioServidor' ,
-      'id_vinculado' =>  '28'] ,
-  2 => 
-    [
-      'regra_quebrada' =>  'vlAtualBeneficio' ,
-      'nome_tag' =>  'beneficioServidor',
-      'id_vinculado' =>  '96'],
-  3 => 
-    [
-      'regra_quebrada' =>  'dtUltimaAtualizacao',
-      'nome_tag' =>  'beneficioServidor',
-      'id_vinculado' =>  '96' ],
-  4 => 
-    [
-      'regra_quebrada' =>  'vlAtualBeneficio' ,
-      'nome_tag' =>  'beneficioServidor',
-      'id_vinculado' =>  '96']
+    0 => ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '28'],
+    1 => ['regra_quebrada' => 'dtUltimaAtualizacao', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '28'],
+    2 => ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96'],
+    3 => ['regra_quebrada' => 'dtUltimaAtualizacao', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96'],
+    4 => ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96']
 ];
 
-echo array_obj_debug($dellRey, true);
+echo arrayObjDebug($dellRey, true);
 
-
-?>
