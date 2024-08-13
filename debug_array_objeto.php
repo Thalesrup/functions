@@ -1,112 +1,219 @@
-<?php
-function arrayObjDebug($variable, $html = false, $maxDepth = 100, $maxWidth = 25, $depth = 0, &$objects = [])
-{
-    $type = gettype($variable);
-    
-    $output = '';
-    if ($type == 'boolean'):
-        $output .= $variable ? 'true' : 'false';
-    elseif ($type == 'integer' || $type == 'double'):
-        $output .= $variable;
-    elseif ($type == 'NULL'):
-        $output .= 'null';
-    elseif ($type == 'string'):
-        $output .= formatString($variable, $maxDepth);
-    elseif ($type == 'array'):
-        $output .= formatArray($variable, $html, $maxDepth, $maxWidth, $depth, $objects);
-    elseif ($type == 'object'):
-        $output .= formatObject($variable, $html, $maxDepth, $maxWidth, $depth, $objects);
-    else:
-        $output .= 'undefined';
-    endif;
-    
-    if ($depth == 0) {
-        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-        do {
-            $call = array_shift($backtrace);
-        } while ($call && !isset($call['file']));
 
-        if ($call) {
-            $output = "Arquivo que chamou: " . $call['file'] . "\n" . "Linha que chamou a Function : " . $call['line'] . "\n" . $output . ';';
-            if ($html) {
-                echo nl2br(str_replace(' ', '&nbsp;', htmlentities($output)));
-            } else {
-                echo $output;
-            }
+<?php
+
+class Debugger
+{
+    private $html;
+    private $maxDepth;
+    private $maxWidth;
+    private $objects = [];
+
+    public function __construct($html = false, $maxDepth = 100, $maxWidth = 25)
+    {
+        $this->html = $html;
+        $this->maxDepth = $maxDepth;
+        $this->maxWidth = $maxWidth;
+    }
+
+    public function debug($variable)
+    {
+        $output = $this->handleVariable($variable);
+
+        if ($this->isRootCall()) {
+            $this->outputDebugInfo($output);
+        }
+
+        return $output;
+    }
+
+    private function handleVariable($variable, $depth = 0)
+    {
+        $type = gettype($variable);
+
+        $handler = match ($type) {
+            'boolean' => new BooleanHandler(),
+            'integer', 'double' => new NumericHandler(),
+            'NULL' => new NullHandler(),
+            'string' => new StringHandler($this->maxDepth),
+            'array' => new ArrayHandler($this->maxWidth, $this->maxDepth),
+            'object' => new ObjectHandler($this->objects, $this->maxWidth, $this->maxDepth),
+            default => new UndefinedHandler(),
+        };
+
+        return $handler->handle($variable, $this, $depth);
+    }
+
+    private function isRootCall()
+    {
+        return count(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)) === 1;
+    }
+
+    private function outputDebugInfo($output)
+    {
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+        $call = array_shift($backtrace);
+
+        $output = "Arquivo que chamou: " . $call['file'] . "\nLinha que chamou a Function: " . $call['line'] . "\n" . $output . ';';
+
+        if ($this->html) {
+            echo nl2br(str_replace(' ', '&nbsp;', htmlentities($output)));
+        } else {
+            echo $output;
         }
     }
-    
-    return $output;
 }
 
-function formatString($string, $maxLength)
+interface TypeHandler
 {
-    $string = str_replace(
-        ["\0", "\a", "\b", "\f", "\n", "\r", "\t", "\v"],
-        ['\0', '\a', '\b', '\f', '\n', '\r', '\t', '\v'],
-        substr($string, 0, $maxLength),
-        $count
-    );
-    $string = substr($string, 0, $maxLength);
-    $length = strlen($string);
-    
-    if ($length < $maxLength) {
-        return '"' . $string . '"';
-    } else {
-        return 'Tamanho String(' . $length . '): "' . $string . '"';
+    public function handle($variable, Debugger $debugger, $depth);
+}
+
+class BooleanHandler implements TypeHandler
+{
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        return $variable ? 'true' : 'false';
     }
 }
 
-function formatArray($array, $html, $maxDepth, $maxWidth, $depth, &$objects)
+class NumericHandler implements TypeHandler
 {
-    $length = count($array);
-   
-    if (!$length) {
-        return 'array(0) {}';
-    } else {
-        $keys = array_keys($array);
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        return $variable;
+    }
+}
+
+class NullHandler implements TypeHandler
+{
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        return 'null';
+    }
+}
+
+class StringHandler implements TypeHandler
+{
+    private $maxLength;
+
+    public function __construct($maxLength)
+    {
+        $this->maxLength = $maxLength;
+    }
+
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        $formattedString = str_replace(
+            ["\0", "\a", "\b", "\f", "\n", "\r", "\t", "\v"],
+            ['\0', '\a', '\b', '\f', '\n', '\r', '\t', '\v'],
+            substr($variable, 0, $this->maxLength)
+        );
+
+        return (strlen($variable) < $this->maxLength) 
+            ? "\"$formattedString\"" 
+            : "Tamanho String(" . strlen($variable) . "): \"$formattedString\"";
+    }
+}
+
+class ArrayHandler implements TypeHandler
+{
+    private $maxWidth;
+    private $maxDepth;
+
+    public function __construct($maxWidth, $maxDepth)
+    {
+        $this->maxWidth = $maxWidth;
+        $this->maxDepth = $maxDepth;
+    }
+
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        if (empty($variable)) {
+            return 'array(0) {}';
+        }
+
+        return $this->formatIterable($variable, $debugger, $depth);
+    }
+
+    private function formatIterable($iterable, Debugger $debugger, $depth)
+    {
+        $output = '';
         $indentation = str_repeat(' ', $depth * 2);
-        $output = $indentation . '[';
         $count = 0;
-        foreach ($keys as $key) {
-            if ($count == $maxWidth) {
+
+        foreach ($iterable as $key => $value) {
+            if ($count === $this->maxWidth) {
                 $output .= "\n" . $indentation;
                 break;
             }
-            $output .= "\n" . $indentation . "  $key => " . arrayObjDebug($array[$key], $html, $maxDepth, $maxWidth, $depth + 1, $objects) . ',';
+            $output .= "\n$indentation  $key => " . $debugger->handleVariable($value, $depth + 1) . ',';
             $count++;
         }
-        $output .= "\n" . $indentation . ']';
-        return $output;
+
+        return "[\n$output\n" . str_repeat(' ', $depth * 2) . "]";
     }
 }
 
-function formatObject($object, $html, $maxDepth, $maxWidth, $depth, &$objects)
+class ObjectHandler implements TypeHandler
 {
-    $id = array_search($object, $objects, true);
-    
-    if ($id !== false) {
-        return get_class($object) . '#' . ($id + 1) . ' {...}';
-    } else {
-        $array = (array)$object;
-        $indentation = str_repeat(' ', $depth * 2);
-        $output = $indentation . '[';
-        $properties = array_keys($array);
-        foreach ($properties as $property) {
-            $name = str_replace("\0", ':', trim($property));
-            $output .= "\n" . $indentation . "  '$name' => " . arrayObjDebug($array[$property], $html, $maxDepth, $maxWidth, $depth + 1, $objects) . ',';
+    private $objects;
+    private $maxWidth;
+    private $maxDepth;
+
+    public function __construct(&$objects, $maxWidth, $maxDepth)
+    {
+        $this->objects = &$objects;
+        $this->maxWidth = $maxWidth;
+        $this->maxDepth = $maxDepth;
+    }
+
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        $id = array_search($variable, $this->objects, true);
+
+        if ($id !== false) {
+            return get_class($variable) . '#' . ($id + 1) . ' {...}';
         }
-        $output .= "\n" . $indentation . ']';
-        return $output;
+
+        $this->objects[] = $variable;
+        return $this->formatIterable((array)$variable, $debugger, $depth);
+    }
+
+    private function formatIterable($iterable, Debugger $debugger, $depth)
+    {
+        $output = '';
+        $indentation = str_repeat(' ', $depth * 2);
+        $count = 0;
+
+        foreach ($iterable as $key => $value) {
+            if ($count === $this->maxWidth) {
+                $output .= "\n" . $indentation;
+                break;
+            }
+            $output .= "\n$indentation  $key => " . $debugger->handleVariable($value, $depth + 1) . ',';
+            $count++;
+        }
+
+        return "[\n$output\n" . str_repeat(' ', $depth * 2) . "]";
     }
 }
 
+class UndefinedHandler implements TypeHandler
+{
+    public function handle($variable, Debugger $debugger, $depth)
+    {
+        return 'undefined';
+    }
+}
+
+// Exemplo de uso
 $dellRey = [
-    0 => ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '28'],
-    1 => ['regra_quebrada' => 'dtUltimaAtualizacao', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '28'],
-    2 => ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96'],
-    3 => ['regra_quebrada' => 'dtUltimaAtualizacao', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96'],
-    4 => ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96']
+    ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '28'],
+    ['regra_quebrada' => 'dtUltimaAtualizacao', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '28'],
+    ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96'],
+    ['regra_quebrada' => 'dtUltimaAtualizacao', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96'],
+    ['regra_quebrada' => 'vlAtualBeneficio', 'nome_tag' => 'beneficioServidor', 'id_vinculado' => '96']
 ];
 
-echo arrayObjDebug($dellRey, true);
+$debugger = new Debugger(true);
+echo $debugger->debug($dellRey);
