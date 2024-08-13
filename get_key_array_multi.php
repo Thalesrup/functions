@@ -1,33 +1,55 @@
 <?php
 
-function validarRegra($string)
+class PensionSchemeValidator
 {
-    $tabelaRegimePrevidenciario = [
-        1 => ['REGIME PRÓPRIO DE PREVIDÊNCIA SOCIAL', 'RPPS'],
-        2 => 'REGIME PRÓPRIO MILITAR',
-        3 => ['REGIME PRÓPRIO EM EXTINÇÃO', 'RPPS Em Extinção'],
-        4 => 'REGIME PRÓPRIO MILITAR EM EXTINÇÃO',
-        5 => ['REGIME GERAL DE PREVIDÊNCIA SOCIAL (INSS)', 'RGPS']
-    ];
+    private array $pensionSchemeTable;
 
-    $codigoRegimePrevidenciario = array_search($string, array_column($tabelaRegimePrevidenciario, 0), true);
-
-    if ($codigoRegimePrevidenciario === false) {
-        return validaArrayMultidimensional($string, $tabelaRegimePrevidenciario);
+    public function __construct(array $pensionSchemeTable)
+    {
+        $this->pensionSchemeTable = $pensionSchemeTable;
     }
-    
-    return $codigoRegimePrevidenciario;
-}
 
-function validaArrayMultidimensional($codigoParametro, $arrayTabela)
-{
-    foreach ($arrayTabela as $codigo => $valor) {
-        if (is_array($valor)) {
-            if (in_array($codigoParametro, $valor)) {
-                return $codigo;
+    public function validate(string $scheme): ?int
+    {
+        $schemeCode = $this->findSchemeByName($scheme);
+
+        if ($schemeCode !== null) {
+            return $schemeCode;
+        }
+
+        return $this->findSchemeInArray($scheme);
+    }
+
+    private function findSchemeByName(string $name): ?int
+    {
+        foreach ($this->pensionSchemeTable as $code => $names) {
+            if (is_array($names) && $names[0] === $name) {
+                return $code;
             }
         }
+
+        return null;
+    }
+
+    private function findSchemeInArray(string $name): ?int
+    {
+        foreach ($this->pensionSchemeTable as $code => $names) {
+            if (in_array($name, $names, true)) {
+                return $code;
+            }
+        }
+
+        return null;
     }
 }
 
-echo validarRegra('RGPS');
+$pensionSchemeTable = [
+    1 => ['PROPRIETARY PENSION SCHEME', 'PPS'],
+    2 => ['MILITARY PENSION SCHEME'],
+    3 => ['PROPRIETARY SCHEME IN EXTINCTION', 'PPS In Extinction'],
+    4 => ['MILITARY SCHEME IN EXTINCTION'],
+    5 => ['GENERAL SOCIAL SECURITY SCHEME (INSS)', 'GSS'],
+];
+
+$validator = new PensionSchemeValidator($pensionSchemeTable);
+echo $validator->validate('GSS');
