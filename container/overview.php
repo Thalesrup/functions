@@ -1,3 +1,5 @@
+<?php
+
 $container = new SimpleContainer();
 
 $container->set('logger', new Logger());
