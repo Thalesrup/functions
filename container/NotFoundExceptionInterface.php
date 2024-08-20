@@ -1,0 +1,1 @@
+interface NotFoundExceptionInterface extends \Throwable {}
