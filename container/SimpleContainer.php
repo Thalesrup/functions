@@ -1,3 +1,5 @@
+<?php
+
 class SimpleContainer implements ContainerInterface
 {
     private array $services = [];
