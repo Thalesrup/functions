@@ -1,0 +1,1 @@
+interface ContainerExceptionInterface extends \Throwable {}
