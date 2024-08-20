@@ -1,3 +1,5 @@
+<?php
+
 interface ContainerInterface
 {
     public function get(string $id): mixed;
